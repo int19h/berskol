@@ -130,7 +130,11 @@ export function searchWords(
   offset: number,
 ): { results: SearchResult[]; total: number } {
   const q = query.toLowerCase().trim();
-  const wordRe = new RegExp(`(^|[^a-z0-9])${escapeRe(q)}($|[^a-z0-9])`);
+  // Dictionary glosses use inflected English ("likes", "eating"), so accept
+  // common suffixes on whole-word matches: "like" matches "likes"/"liked".
+  const wordRe = new RegExp(
+    `(^|[^a-z0-9])${escapeRe(q)}(s|es|d|ed|ing)?($|[^a-z0-9])`,
+  );
   const ranked: [number, SearchResult][] = [];
   for (const w of index.words) {
     let rank: number | undefined;
