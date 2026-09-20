@@ -11,6 +11,7 @@
 
 import { fetchUpstream, VersionMemo, type Env } from "./upstream";
 import { GRAMMAR_PATH, getParseableGrammar } from "./parser";
+import { SEMANTICS_README_PATH } from "./semantics";
 import { pureGrammar } from "./purepeg";
 
 export const SKILL_NAME = "eberban-expert";
@@ -37,6 +38,7 @@ export function docUrl(uri: string): string {
   const ref = uri.match(/^skill:\/\/[a-z-]+\/references\/([a-z0-9-]+\.md)$/);
   if (ref) return `${REPO_BLOB}${SKILL_DIR}references/${ref[1]}`;
   if (uri === URI_GRAMMAR_PEG) return `${REPO_BLOB}web/src/grammar/eberban.peggy`;
+  if (uri === URI_SEMANTICS) return `${REPO_BLOB}${SEMANTICS_README_PATH}`;
   const refgram = uri.match(/^eberban:\/\/refgram\/(.+)\.md$/);
   if (refgram) return `${REFGRAM_SITE}${refgram[1]}.html`;
   return "https://berskol.app/";
@@ -44,6 +46,7 @@ export function docUrl(uri: string): string {
 
 export const URI_SKILL = `skill://${SKILL_NAME}/SKILL.md`;
 export const URI_GRAMMAR_PEG = `skill://${SKILL_NAME}/grammar.peg`;
+export const URI_SEMANTICS = `skill://${SKILL_NAME}/semantics.md`;
 export const URI_SKILL_INDEX = "skill://index.json";
 export const URI_REFGRAM_TOC = "eberban://refgram/toc";
 
@@ -60,6 +63,8 @@ export async function readDoc(
   uri: string,
 ): Promise<DocContent | null> {
   if (uri === URI_SKILL) return fetchDoc(env, ctx, `${SKILL_DIR}SKILL.md`);
+
+  if (uri === URI_SEMANTICS) return fetchDoc(env, ctx, SEMANTICS_README_PATH);
 
   const ref = uri.match(
     new RegExp(`^skill://${SKILL_NAME}/references/([a-z0-9-]+)\\.md$`),
@@ -189,6 +194,10 @@ export async function docCatalog(
       title: `Skill reference: ${name.replace(/-/g, " ")}`,
     })),
     { uri: URI_GRAMMAR_PEG, title: "Full grammar as pure PEG (structural sketch, no code)" },
+    {
+      uri: URI_SEMANTICS,
+      title: "Semantics: formula notation and coverage (for the formula tool)",
+    },
     { uri: URI_SKILL_INDEX, title: "Skill discovery index (SEP-2640 draft)" },
     { uri: URI_REFGRAM_TOC, title: "Reference grammar: table of contents" },
   ];
@@ -221,6 +230,7 @@ function skillIndex(): unknown {
             (n) => `skill://${SKILL_NAME}/references/${n}.md`,
           ),
           URI_GRAMMAR_PEG,
+          URI_SEMANTICS,
         ],
       },
     ],

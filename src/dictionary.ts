@@ -25,9 +25,15 @@ interface IndexedWord {
   rest: string;
 }
 
-interface Index {
+export interface Index {
   entries: Map<string, Entry>;
   words: IndexedWord[];
+  /**
+   * The parsed YAML exactly as upstream's own loadDictionary() returns it.
+   * Kept alongside the index so the semantics lowering, which wants that raw
+   * map, does not have to parse the 215 KB of YAML a second time.
+   */
+  raw: Record<string, Entry>;
 }
 
 const indexMemo = new VersionMemo<Index>();
@@ -70,6 +76,8 @@ function buildIndex(yamlText: string): Index {
     | null;
   const entries = new Map<string, Entry>();
   const words: IndexedWord[] = [];
+  const raw: Record<string, Entry> =
+    doc && typeof doc === "object" ? doc : {};
   if (doc && typeof doc === "object") {
     for (const [key, value] of Object.entries(doc)) {
       if (!value || typeof value !== "object") continue;
@@ -91,7 +99,7 @@ function buildIndex(yamlText: string): Index {
         `refusing to serve (upstream format change?)`,
     );
   }
-  return { entries, words };
+  return { entries, words, raw };
 }
 
 function str(v: unknown): string {

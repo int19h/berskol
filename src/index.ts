@@ -10,6 +10,7 @@ import { parse } from "./parser";
 import { getDictionary, lookupWord } from "./dictionary";
 import { refgramToc } from "./docs";
 import { particleInfo } from "./glosser";
+import { formula, GOLDEN_TEXT, GOLDEN_FORMULA } from "./semantics";
 
 const LANDING = `<!doctype html>
 <html lang="en">
@@ -93,6 +94,11 @@ async function goldenChecks(env: Env, ctx: ExecutionContext): Promise<void> {
   await run("parse-reject", async () => {
     const r = await parse(env, ctx, "xqz");
     return r.ok === false;
+  });
+  await run("formula", async () => {
+    const r = await formula(env, ctx, GOLDEN_TEXT, false);
+    anyStale ||= r.stale;
+    return r.ok === true && r.formula === GOLDEN_FORMULA;
   });
   await run("dictionary", async () => {
     const { index, meta } = await getDictionary(env, ctx);

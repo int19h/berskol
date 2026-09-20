@@ -7,6 +7,7 @@ import { parse, getParseableGrammar } from "./parser";
 import { pureGrammar, ruleWithNeighbors } from "./purepeg";
 import { getDictionary, lookupWord, searchWords } from "./dictionary";
 import { particleInfo } from "./glosser";
+import { formula } from "./semantics";
 import {
   readDoc,
   docCatalog,
@@ -15,6 +16,7 @@ import {
   SKILL_NAME,
   URI_SKILL,
   URI_GRAMMAR_PEG,
+  URI_SEMANTICS,
   URI_SKILL_INDEX,
 } from "./docs";
 
@@ -25,6 +27,8 @@ Routing:
 - Parse or validate an Eberban sentence -> \`parse\` (always parse before
   translating or judging grammaticality; do not guess). Use format "check"
   for validity only, "tree" when you need the structure.
+- Logical reading of a sentence (who fills which place, what it asserts) ->
+  \`formula\`; the notation is documented in ${URI_SEMANTICS}.
 - Meaning of a word -> \`lookup_word\` (exact) or \`search_words\` (by meaning/gloss).
 - Meaning of an inflected particle (vi/fi/si/ti/vei families, e.g. "vio",
   "fahe") -> \`particle_info\`; these are generated forms most dictionaries omit.
@@ -91,6 +95,38 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
         });
       }
       return textResult(full);
+    },
+  );
+
+  server.registerTool(
+    "formula",
+    {
+      description:
+        "Logical transcription of Eberban text in the refgram notation: the " +
+        "official lowering turns the parse tree into numbered predicate " +
+        "definitions and assertions. `unsupported` lists constructs the " +
+        "lowering refuses to guess about (it never invents a reading for " +
+        "them). Read " +
+        URI_SEMANTICS +
+        " for the notation table and the coverage list.",
+      inputSchema: {
+        text: z
+          .string()
+          .min(1)
+          .max(8000)
+          .describe("Eberban text to transcribe (one or more sentences)"),
+        all_defaults: z
+          .boolean()
+          .optional()
+          .describe(
+            "Print the default conjunct of every hidden unbound atom place, " +
+              "as the refgram's logic/default.md does",
+          ),
+      },
+    },
+    async ({ text, all_defaults }) => {
+      const outcome = await formula(env, ctx, text, all_defaults ?? false);
+      return jsonResult(outcome);
     },
   );
 
@@ -403,6 +439,19 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
       mimeType: "text/plain",
     },
     docResource(URI_GRAMMAR_PEG),
+  );
+
+  server.registerResource(
+    "eberban-semantics",
+    URI_SEMANTICS,
+    {
+      title: "Eberban semantics (formula notation)",
+      description:
+        "Upstream's semantics README: the refgram notation the formula tool " +
+        "prints, and exactly which constructs the lowering covers.",
+      mimeType: "text/markdown",
+    },
+    docResource(URI_SEMANTICS),
   );
 
   server.registerResource(

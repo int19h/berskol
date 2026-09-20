@@ -15,7 +15,7 @@ export const GRAMMAR_PATH = "web/src/grammar/eberban.peggy";
 const WEB_PACKAGE_PATH = "web/package.json";
 
 // Bump when WRAPPER or codegen flags change, so stale isolates are abandoned.
-const WRAPPER_VERSION = 4;
+const WRAPPER_VERSION = 5;
 const ISOLATE_TIMEOUT_MS = 10_000;
 
 const WRAPPER = `
@@ -76,7 +76,7 @@ export async function getGrammar(env: Env, ctx: ExecutionContext): Promise<Upstr
  * script. On codegen failure (e.g. upstream adopted grammar syntax our pinned
  * peggy can't handle), fall back to the last-known-good generated source.
  */
-async function getParserSource(
+export async function getParserSource(
   env: Env,
   ctx: ExecutionContext,
   grammar: Upstream,
@@ -88,6 +88,9 @@ async function getParserSource(
         cache: true,
         format: "es",
         output: "source",
+        // Upstream's build-peggy passes --allowed-start-rules "*"; match it so
+        // the source we generate is the source upstream would ship.
+        allowedStartRules: ["*"],
       }),
     );
     // Codegen succeeded: the grammar text is AST-valid (enough for the
@@ -259,7 +262,7 @@ export async function parse(
 /** Warn when upstream's peggy requirement drifts from our bundled major. */
 const driftMemo = new VersionMemo<string | null>();
 
-async function peggyDriftWarning(
+export async function peggyDriftWarning(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<string | null> {

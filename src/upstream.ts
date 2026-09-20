@@ -22,9 +22,17 @@ export interface Env {
   RL?: { limit(opts: { key: string }): Promise<{ success: boolean }> };
 }
 
+/**
+ * A dynamic-worker module: a bare string is an ES module, the object form
+ * selects another module type. `js` is needed for any name that does not end
+ * in .js, and `json` (whose value is the parsed data, not JSON text) carries
+ * the dictionary into the semantics isolate as data rather than as code.
+ */
+export type WorkerModule = string | { js: string } | { json: unknown };
+
 export interface WorkerCode {
   mainModule: string;
-  modules: Record<string, string>;
+  modules: Record<string, WorkerModule>;
   compatibilityDate: string;
   globalOutbound?: null;
 }

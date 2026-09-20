@@ -30,6 +30,11 @@ constructed language: parser, dictionary, grammar, and reference documentation.
   upstream JS modules in sandboxed isolates. Verified working in production
   on this account.
 - A YAML parser bundled at deploy time for the dictionary.
+- `sucrase` (pinned) to strip types from upstream's TypeScript semantics
+  modules: they are fetched at request time, so wrangler's deploy-time esbuild
+  never sees them, and workerd has no stripper of its own
+  (`node:module.stripTypeScriptTypes` throws `ERR_METHOD_NOT_IMPLEMENTED`).
+  Pure text transform, no eval.
 - KV namespace `CACHE` for last-known-good artifacts (see Resilience).
 
 ## Content pipeline
@@ -52,14 +57,18 @@ Caching uses the Cache API explicitly so only 200 responses are stored (no
 | `web/package.json` | peggy version drift detection |
 | `dictionary/en.yaml` (~215 KB) | word lookup/search tools |
 | `web/src/shared/particle-gloss.js` | particle_info tool (runs in isolate) |
+| `web/src/semantics/{tree,ir,places,lower,print}.ts` | formula tool: lowering + printer (run in isolate) |
+| `web/src/shared/{dict-lint,places}.js`, `web/src/visual-parser/compound-key.js` | their transitive imports |
+| `web/src/semantics/README.md` | formula notation + coverage; served as a doc |
 | `.ai/eberban-expert/SKILL.md` + `references/*.md` | skill resources |
 | `books/refgram/src/**/*.md` + `SUMMARY.md` | refgram resources + ToC |
 
 ### Parser isolates
 
 1. Fetch grammar at the resolved SHA.
-2. `peggy.generate(grammar, { cache: true, format: "es", output: "source" })` —
-   the exact flags upstream's `build-peggy` script uses.
+2. `peggy.generate(grammar, { cache: true, format: "es", output: "source",
+   allowedStartRules: ["*"] })` — the exact flags upstream's `build-peggy`
+   script uses.
 3. `env.LOADER.get("parser-" + sha + "-p" + peggyVersion + "-v" + WRAPPER_VERSION, ...)` with:
    - modules: generated parser + a small wrapper entrypoint,
    - `globalOutbound: null` (no network in the isolate — upstream grammar
@@ -71,6 +80,41 @@ Caching uses the Cache API explicitly so only 200 responses are stored (no
 Isolates are cached by ID; a new upstream commit yields a new SHA and a
 one-time regeneration. Isolate calls carry a 10 s wall-clock timeout.
 Measured: cold ≈ 250 ms, warm parse ≈ 30–70 ms.
+
+### Semantics isolate
+
+Upstream's `web/src/semantics/` turns a parse tree into its logical reading in
+the reference grammar's notation. It is TypeScript (erasable syntax only), so:
+
+1. Fetch the nine code files at the resolved SHA.
+2. Host side, memoized per SHA: strip the five `.ts` files with sucrase
+   (~50 ms for all five). Import specifiers keep their `.ts` extension, which
+   to the loader is just part of a module name, so upstream's own relative
+   imports resolve unchanged.
+3. `env.LOADER.get("semantics-" + sha + "-p" + peggyVersion + "-v" + WRAPPER_VERSION, ...)`
+   with the modules laid out at their upstream relative paths
+   (`semantics/*.ts`, `shared/*.js`, `visual-parser/compound-key.js`), the
+   same generated parser source the parse tool uses at
+   `grammar/eberban.peggy.js`, and the parsed dictionary as a `json` module.
+   Every source is passed in the explicit `{ js }` form: without it the loader
+   infers the module type from the name and rejects the `.ts` names. The
+   `json` module takes the already-parsed value, not JSON text. Again
+   `globalOutbound: null` and the pinned compatibility date.
+4. Wrapper takes `{ text, allDefaults }` and returns
+   `{ ok, formula, unsupported }`, the parse-error shape above when the text
+   does not parse, or `{ ok: false, lowerError }` when lowering or printing
+   throws. That last case is a printer malfunction rather than invalid
+   Eberban, and the tool says so in a warning.
+
+One SHA keys the whole isolate, since every artifact resolves to one commit
+per freshness window; when a component falls back to an older copy, its SHA is
+folded into the isolate ID so two different contents can never share one.
+Measured locally: cold ≈ 370 ms (fetch + strip + isolate build + golden gate),
+warm ≈ 20 ms.
+
+Tool `formula(text, ?all_defaults)` returns `{ formula, unsupported, sha,
+stale, warnings }`. `unsupported` lists constructs the lowering refuses to
+guess about; it never invents a reading for them.
 
 ### Dictionary
 
@@ -104,6 +148,8 @@ Resources (all fetched live, SHA-cached):
   (named to match its frontmatter, per SEP-2640 conventions).
 - `skill://eberban-expert/references/{name}.md` — the 9 reference files.
 - `skill://eberban-expert/grammar.peg` — as above.
+- `skill://eberban-expert/semantics.md` — upstream's semantics README: the
+  formula notation table and the coverage list, for reading `formula` output.
 - `skill://index.json` — discovery document (SEP-2640 draft layout; the SEP
   is in flux, so no conformance is claimed and no skills/* RPCs are exposed).
 - `eberban://refgram/toc` — parsed `SUMMARY.md` as a path → title map.
@@ -132,6 +178,12 @@ and cross-reference the skill resource.
   documents are promoted on successful fetch. KV writes happen only when the
   content SHA changes. Tool responses carry `stale: true` + timestamp when
   serving fallback.
+- **Semantics bundle failure**: KV key `gen:semantics` holds the stripped
+  sources as `{ sha, modules, fetchedAt }`, promoted only
+  after the golden sentence `a mian bjan` prints the exact formula from
+  upstream's semantics README through the real isolate. A strip failure, an
+  isolate load failure, or a golden mismatch falls back to that copy with a
+  warning naming both SHAs.
 - **Peggy codegen failure** (upstream grammar uses syntax our pinned peggy
   can't parse): fall back to last-good generated parser source from KV; report
   the codegen error and the drift warning in the tool response.
@@ -140,7 +192,7 @@ and cross-reference the skill resource.
   results.
 - **Monitoring**: a cron trigger (every 6 h) runs golden checks (parse a
   known-good sentence, reject a known-bad one, dictionary lookup, particle
-  gloss, refgram ToC) and stores the outcome; `/health` reports upstream
+  gloss, formula, refgram ToC) and stores the outcome; `/health` reports upstream
   reachability + the last golden-check result and returns 503 on failure, so
   any external uptime monitor can watch it.
 - **File moved upstream**: paths are constants in one config module; a 404 on
@@ -185,6 +237,7 @@ src/
   mcp.ts          — server factory: tools/resources/instructions
   upstream.ts     — fetch layer: SHA resolution, Cache API, KV promotion
   parser.ts       — peggy codegen + Worker Loader isolates
+  semantics.ts    — sucrase type-strip + lowering/printer isolate
   glosser.ts      — particle-gloss isolate
   purepeg.ts      — AST → action-free PEG printer
   dictionary.ts   — YAML parse + index + ranked search
