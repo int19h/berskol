@@ -18,6 +18,10 @@ export type Entry = Record<string, unknown>;
 
 interface IndexedWord {
   word: string;
+  /** The word with spaces removed, lowercased: compounds such as
+   * "e spua ckuil" are commonly written "espuackuil" in running text, and
+   * upstream's dictionary page matches on this form too. */
+  unspaced: string;
   entry: Entry;
   // Lowercased text per field group, for ranked search.
   gloss: string;
@@ -27,6 +31,8 @@ interface IndexedWord {
 
 export interface Index {
   entries: Map<string, Entry>;
+  /** Space-stripped lowercase key -> canonical dictionary word. */
+  unspaced: Map<string, string>;
   words: IndexedWord[];
   /**
    * The parsed YAML exactly as upstream's own loadDictionary() returns it.
@@ -75,6 +81,7 @@ function buildIndex(yamlText: string): Index {
     | Record<string, Entry>
     | null;
   const entries = new Map<string, Entry>();
+  const unspaced = new Map<string, string>();
   const words: IndexedWord[] = [];
   const raw: Record<string, Entry> =
     doc && typeof doc === "object" ? doc : {};
@@ -84,8 +91,10 @@ function buildIndex(yamlText: string): Index {
       const word = String(key);
       const entry = value as Entry;
       entries.set(word, entry);
+      unspaced.set(unspace(word), word);
       words.push({
         word,
+        unspaced: unspace(word),
         entry,
         gloss: str(entry.gloss).toLowerCase(),
         short: str(entry.short).toLowerCase(),
@@ -99,7 +108,11 @@ function buildIndex(yamlText: string): Index {
         `refusing to serve (upstream format change?)`,
     );
   }
-  return { entries, words, raw };
+  return { entries, unspaced, words, raw };
+}
+
+function unspace(word: string): string {
+  return word.replace(/\s+/g, "").toLowerCase();
 }
 
 function str(v: unknown): string {
@@ -117,8 +130,20 @@ function collectStrings(value: unknown, depth = 0): string[] {
   return [];
 }
 
-export function lookupWord(index: Index, word: string): Entry | null {
-  return index.entries.get(word) ?? index.entries.get(word.toLowerCase()) ?? null;
+/**
+ * Exact lookup. Accepts the canonical key, any casing, and the unspaced
+ * spelling of a compound; `word` in the result is always the canonical
+ * dictionary key so callers can see how the entry is actually written.
+ */
+export function lookupWord(
+  index: Index,
+  word: string,
+): { word: string; entry: Entry } | null {
+  const direct = index.entries.get(word) ?? index.entries.get(word.toLowerCase());
+  if (direct) return { word: index.entries.has(word) ? word : word.toLowerCase(), entry: direct };
+  const canonical = index.unspaced.get(unspace(word));
+  if (canonical === undefined) return null;
+  return { word: canonical, entry: index.entries.get(canonical)! };
 }
 
 export interface SearchResult {
@@ -138,6 +163,7 @@ export function searchWords(
   offset: number,
 ): { results: SearchResult[]; total: number } {
   const q = query.toLowerCase().trim();
+  const qUnspaced = unspace(q);
   // Dictionary glosses use inflected English ("likes", "eating"), so accept
   // common suffixes on whole-word matches: "like" matches "likes"/"liked".
   const wordRe = new RegExp(
@@ -147,7 +173,7 @@ export function searchWords(
   for (const w of index.words) {
     let rank: number | undefined;
     let matched: string | undefined;
-    if (w.word.toLowerCase() === q) {
+    if (w.word.toLowerCase() === q || w.unspaced === qUnspaced) {
       rank = 0;
       matched = "word";
     } else if (wordRe.test(w.gloss)) {
@@ -156,7 +182,7 @@ export function searchWords(
     } else if (wordRe.test(w.short)) {
       rank = 2;
       matched = "short";
-    } else if (w.rest.includes(q)) {
+    } else if (w.rest.includes(q) || w.unspaced.includes(qUnspaced)) {
       rank = 3;
       matched = "other";
     }

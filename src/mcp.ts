@@ -134,7 +134,9 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
     "lookup_word",
     {
       description:
-        "Look up one Eberban word exactly (root, particle, or digit). For " +
+        "Look up one Eberban word exactly (root, particle, digit, or compound; " +
+        "compounds may be given with or without spaces, e.g. 'espuackuil' " +
+        "for 'e spua ckuil'). For " +
         "meaning-based search use search_words; for generated particle forms " +
         "(e.g. 'vio', 'fahe') use particle_info if this returns nothing.",
       inputSchema: {
@@ -143,13 +145,13 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
     },
     async ({ word }) => {
       const { index, meta } = await getDictionary(env, ctx);
-      const entry = lookupWord(index, word);
+      const hit = lookupWord(index, word);
       const freshness = meta.stale
         ? { stale: true, fetchedAt: meta.fetchedAt }
         : { stale: false };
       return jsonResult(
-        entry
-          ? { word, entry, ...freshness }
+        hit
+          ? { word: hit.word, entry: hit.entry, ...freshness }
           : {
               word,
               found: false,
@@ -360,13 +362,13 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
       if (id.startsWith("word:")) {
         const word = id.slice(5);
         const { index } = await getDictionary(env, ctx);
-        const entry = lookupWord(index, word);
-        const payload = entry
+        const hit = lookupWord(index, word);
+        const payload = hit
           ? {
               id,
-              title: word,
-              text: JSON.stringify(entry, null, 2),
-              url: `https://eberban.github.io/eberban/dictionary/#${encodeURIComponent(word)}`,
+              title: hit.word,
+              text: JSON.stringify(hit.entry, null, 2),
+              url: `https://eberban.github.io/eberban/dictionary/#${encodeURIComponent(hit.word)}`,
               metadata: { source: "eberban dictionary" },
             }
           : { id, title: "not found", text: "", url: "" };
@@ -466,6 +468,10 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
             .map((d) => ({
               uri: d.uri,
               name: d.title,
+              // The SDK spreads the template's metadata under each listed
+              // item, so without a per-item title every entry would show
+              // the template's title in clients that prefer title over name.
+              title: d.title,
               mimeType: "text/markdown",
             })),
         }),
@@ -491,6 +497,7 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
         const tocResource = {
           uri: "eberban://refgram/toc",
           name: "Reference grammar: table of contents",
+          title: "Reference grammar: table of contents",
           mimeType: "text/markdown",
         };
         try {
@@ -501,6 +508,7 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
               ...toc.entries.map((e) => ({
                 uri: `eberban://refgram/${e.path}`,
                 name: `Refgram: ${e.title}`,
+                title: `Refgram: ${e.title}`, // see the skill-references list
                 mimeType: "text/markdown",
               })),
             ],
