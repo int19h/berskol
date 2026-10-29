@@ -1,6 +1,10 @@
 // MCP server factory: tools, resources, and instructions.
 
-import { McpServer, ResourceTemplate } from "@modelcontextprotocol/server";
+import {
+  McpServer,
+  ResourceNotFoundError,
+  ResourceTemplate,
+} from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { Env } from "./upstream";
 import { parse, getParseableGrammar } from "./parser";
@@ -405,7 +409,7 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
 
   const docResource = (uri: string) => async () => {
     const doc = await readDoc(env, ctx, uri);
-    if (!doc) throw new Error(`unknown resource: ${uri}`);
+    if (!doc) throw new ResourceNotFoundError(uri);
     return { contents: [{ uri, mimeType: mimeFor(uri), text: doc.text }] };
   };
 
@@ -437,7 +441,7 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
 
   server.registerResource(
     "eberban-notes",
-    new ResourceTemplate("eberban://notes/{name}", {
+    new ResourceTemplate("eberban://notes/{name}.md", {
       list: async () =>
         ({
           resources: (await docCatalog(env, ctx))
@@ -462,9 +466,27 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
     },
     async (uri) => {
       const doc = await readDoc(env, ctx, uri.href);
-      if (!doc) throw new Error(`unknown resource: ${uri.href}`);
+      if (!doc) throw new ResourceNotFoundError(uri.href);
       return {
         contents: [{ uri: uri.href, mimeType: "text/markdown", text: doc.text }],
+      };
+    },
+  );
+
+  // Retired skill:// URIs that docs.ts still resolves: readable, not listed.
+  server.registerResource(
+    "eberban-legacy-skill",
+    new ResourceTemplate("skill://eberban-expert/{name}", { list: undefined }),
+    {
+      title: "Retired skill:// aliases",
+      description:
+        "Old URIs for eberban://grammar.peg and eberban://semantics.md.",
+    },
+    async (uri) => {
+      const doc = await readDoc(env, ctx, uri.href);
+      if (!doc) throw new ResourceNotFoundError(uri.href);
+      return {
+        contents: [{ uri: uri.href, mimeType: mimeFor(uri.href), text: doc.text }],
       };
     },
   );
@@ -484,7 +506,7 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
           return {
             resources: [
               tocResource,
-              ...toc.entries.map((e) => ({
+              ...toc.entries.filter((e) => e.path).map((e) => ({
                 uri: `eberban://refgram/${e.path}`,
                 name: `Refgram: ${e.title}`,
                 title: `Refgram: ${e.title}`, // see the notes list
@@ -507,7 +529,7 @@ export function createServer(env: Env, ctx: ExecutionContext): McpServer {
     },
     async (uri) => {
       const doc = await readDoc(env, ctx, uri.href);
-      if (!doc) throw new Error(`unknown resource: ${uri.href}`);
+      if (!doc) throw new ResourceNotFoundError(uri.href);
       return {
         contents: [{ uri: uri.href, mimeType: "text/markdown", text: doc.text }],
       };

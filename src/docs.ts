@@ -54,6 +54,7 @@ export function docUrl(uri: string): string {
   if (note) return `${REPO_BLOB}${NOTES_DIR}${note[1]}.md`;
   if (uri === URI_GRAMMAR_PEG) return `${REPO_BLOB}${GRAMMAR_PATH}`;
   if (uri === URI_SEMANTICS) return `${REPO_BLOB}${SEMANTICS_README_PATH}`;
+  if (uri === URI_REFGRAM_TOC) return REFGRAM_SITE;
   const refgram = uri.match(/^eberban:\/\/refgram\/(.+)\.md$/);
   if (refgram) return `${REFGRAM_SITE}${refgram[1]}.html`;
   return "https://berskol.app/";
@@ -104,7 +105,8 @@ export async function readDoc(
       text: toc.entries
         .map(
           (e) =>
-            `${"  ".repeat(e.depth)}- ${e.title}: eberban://refgram/${e.path}`,
+            `${"  ".repeat(e.depth)}- ${e.title}` +
+            (e.path ? `: eberban://refgram/${e.path}` : ""),
         )
         .join("\n"),
       stale: toc.stale,
@@ -155,7 +157,8 @@ export async function noteNames(
 
 export interface TocEntry {
   title: string;
-  path: string;
+  /** Null for a heading without a page of its own, such as "Morphonology". */
+  path: string | null;
   depth: number;
 }
 
@@ -171,14 +174,16 @@ export async function refgramToc(
     // Chapters inside HTML comments are unpublished drafts: the book does
     // not render them, so they are not served either.
     const published = summary.text.replace(/<!--[\s\S]*?(-->|$)/g, "");
+    // Headings without a page are kept, so the chapters under them keep
+    // their place in the hierarchy.
     for (const line of published.split("\n")) {
-      const m = line.match(/^(\s*)- \[([^\]]+)\]\(([^)]+\.md)\)/);
-      if (m && !m[3].includes(".."))
-        out.push({
-          depth: Math.floor(m[1].length / 2),
-          title: m[2],
-          path: m[3],
-        });
+      const m = line.match(/^(\s*)- \[([^\]]+)\]\(([^)]*)\)/);
+      if (!m) continue;
+      const path = m[3].trim();
+      if (path === "")
+        out.push({ depth: Math.floor(m[1].length / 2), title: m[2], path: null });
+      else if (path.endsWith(".md") && !path.includes(".."))
+        out.push({ depth: Math.floor(m[1].length / 2), title: m[2], path });
     }
     return out;
   });
@@ -206,6 +211,7 @@ export async function docCatalog(
   try {
     const toc = await refgramToc(env, ctx);
     for (const e of toc.entries) {
+      if (!e.path) continue;
       items.push({
         uri: `eberban://refgram/${e.path}`,
         title: `Refgram: ${e.title}`,
