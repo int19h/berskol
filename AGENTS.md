@@ -1,4 +1,4 @@
-## Herdr Collab
+## Collaboration
 
-The Herdr Collab project ID for this repository is exactly `berskol`.
-Coordinate through the `herdr-collab` skill and MCP tools; do not infer the project from the checkout path.
+Do not use Herdr Collab in this repository.
+To get a review or a second opinion from another model, run that model as a subagent through its own CLI in resumable mode: `codex`, `grok`, `kimi`, `muse`, `qwen`, `agy`, and so on.

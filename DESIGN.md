@@ -13,9 +13,10 @@ constructed language: parser, dictionary, grammar, and reference documentation.
 2. **Works everywhere.** MCP-over-Streamable-HTTP is the lowest common
    denominator that reaches ChatGPT web (where skills cannot fetch) and every
    other MCP client.
-3. **Skill-shaped.** Documents follow the SEP-2640 `skill://` resource
-   convention so conforming hosts treat them as a first-class skill; for
-   everyone else they are ordinary MCP resources plus a mirror tool.
+3. **Follow upstream's documents.** berskol relays the documents upstream
+   writes for AI assistants (today `.ai/notes/`) and the reference grammar.
+   They are ordinary MCP resources plus a mirror tool. berskol does not
+   write its own copy of the language knowledge.
 
 ## Stack
 
@@ -60,7 +61,7 @@ Caching uses the Cache API explicitly so only 200 responses are stored (no
 | `web/src/semantics/{tree,ir,places,lower,print}.ts` | formula tool: lowering + printer (run in isolate) |
 | `web/src/shared/{dict-lint,places}.js`, `web/src/visual-parser/compound-key.js` | their transitive imports |
 | `web/src/semantics/README.md` | formula notation + coverage; served as a doc |
-| `.ai/eberban-expert/SKILL.md` + `references/*.md` | skill resources |
+| `.ai/notes/README.md` + the notes it links | AI notes resources |
 | `books/refgram/src/**/*.md` + `SUMMARY.md` | refgram resources + ToC |
 
 ### Parser isolates
@@ -133,28 +134,33 @@ count, so broken upstream YAML falls back instead of poisoning. Tools:
 `peggy.parser.parse(grammar)` → AST → strip `action`/`initializer` code blocks
 → pretty-print rules as clean PEG. Tools/resources:
 
-- resource `skill://eberban-expert/grammar.peg` — whole grammar, action-free,
+- resource `eberban://grammar.peg` — whole grammar, action-free,
   explicitly labeled a *structural sketch*: semantic predicates appear as
   `&{…}`/`!{…}` placeholders, and the header directs authoritative questions
   to the `parse` tool.
 - tool `grammar_rule(?name)` — single rule + rules it directly references
   (one hop); with no argument, lists all rule names.
 
-### Refgram and skill docs
+### Refgram and notes docs
 
 Resources (all fetched live, SHA-cached):
 
-- `skill://eberban-expert/SKILL.md` — upstream's own skill, served verbatim
-  (named to match its frontmatter, per SEP-2640 conventions).
-- `skill://eberban-expert/references/{name}.md` — the 9 reference files.
-- `skill://eberban-expert/grammar.peg` — as above.
-- `skill://eberban-expert/semantics.md` — upstream's semantics README: the
-  formula notation table and the coverage list, for reading `formula` output.
-- `skill://index.json` — discovery document (SEP-2640 draft layout; the SEP
-  is in flux, so no conformance is claimed and no skills/* RPCs are exposed).
+- `eberban://notes/README.md` — upstream's index of its AI notes, with the
+  status legend and working rules.
+- `eberban://notes/{name}.md` — each note the README links; requested names
+  are validated against those links before any fetch.
+- `eberban://grammar.peg` — as above.
+- `eberban://semantics.md` — upstream's semantics README: the formula
+  notation table and the coverage list, for reading `formula` output.
 - `eberban://refgram/toc` — parsed `SUMMARY.md` as a path → title map.
+  Chapters inside HTML comments are unpublished drafts and are left out.
 - `eberban://refgram/{path}` — individual refgram sections; requested paths
   are validated against the SUMMARY.md ToC before any fetch.
+
+Upstream deleted its `.ai/eberban-expert/` skill in favor of `.ai/notes/`,
+so the `skill://` layout is retired. The two documents berskol itself
+derives or relays for its tools, `skill://eberban-expert/grammar.peg` and
+`skill://eberban-expert/semantics.md`, stay readable as unlisted aliases.
 
 Additionally, `search` and `fetch` facade tools implement the ChatGPT
 deep-research connector contract over the dictionary and doc catalog.
@@ -166,9 +172,9 @@ catalog.
 ### Server instructions
 
 `McpServer` instructions field (surfaced at `initialize`) carries a ~12-line
-routing table: which tool for which question, "read skill://eberban-expert/SKILL.md
-for depth", parse-before-translating guidance. Tool descriptions stay short
-and cross-reference the skill resource.
+routing table: which tool for which question, "read eberban://refgram/toc
+for depth, eberban://notes/README.md for analysis", parse-before-translating
+guidance. Tool descriptions stay short and cross-reference the resources.
 
 ## Resilience
 
@@ -222,11 +228,9 @@ and cross-reference the skill resource.
 - No semantic/embedding search (lexical search only; can add Vectorize later).
 - No worker-bundler / runtime npm installs — current upstream logic modules
   have zero npm deps; keep worker-bundler (pinned 0.2.2) in reserve.
-- No SEP-2640 `skills/list`/`skills/get` RPC methods until the SEP stabilizes;
-  the `skill://` resource layout is forward-compatible with it.
 - No auth, no telemetry beyond Cloudflare's built-in analytics.
 
-## Repo layout (`eberban-skill` repo)
+## Repo layout
 
 ```
 DESIGN.md
@@ -241,5 +245,5 @@ src/
   glosser.ts      — particle-gloss isolate
   purepeg.ts      — AST → action-free PEG printer
   dictionary.ts   — YAML parse + index + ranked search
-  docs.ts         — skill/refgram resource catalog
+  docs.ts         — notes/refgram resource catalog
 ```

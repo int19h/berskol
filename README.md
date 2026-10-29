@@ -17,6 +17,7 @@ don't need to do anything (and don't need to know this exists).
 | Tool | Purpose |
 |---|---|
 | `parse` | Parse Eberban text with the official grammar (tree or check-only) |
+| `formula` | Logical reading of a parsed text, from upstream's semantics printer |
 | `lookup_word` | Exact dictionary lookup |
 | `search_words` | Ranked dictionary search with pagination |
 | `particle_info` | Decode generated particle forms (SI/VI/FI/VEI/TI families) |
@@ -24,8 +25,8 @@ don't need to do anything (and don't need to know this exists).
 | `list_docs` / `read_doc` | Document catalog + reads (mirror of resources) |
 | `search` / `fetch` | ChatGPT deep-research connector compatibility facade |
 
-**Resources** — upstream's own `eberban-expert` skill (SKILL.md + references)
-under the SEP-2640 `skill://` layout, the full grammar as action-free PEG,
+**Resources** — upstream's AI notes (`.ai/notes/`, under `eberban://notes/`),
+the full grammar as action-free PEG, the semantics notation for `formula`,
 and the reference grammar book section by section (`eberban://refgram/...`).
 
 ## How it works
